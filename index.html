@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="favicon.ico">
+  <title>NCE Flow · 课本导航</title>
+  <link rel="stylesheet" href="assets/styles.css">
+  <script src="assets/app.js" defer></script>
+  <script src="assets/progress.js" defer></script>
+  <script defer>
+    document.addEventListener('DOMContentLoaded',()=>{
+      const container = document.getElementById('lessons');
+      const header = document.getElementById('bookTitle');
+      const segBooks = document.querySelectorAll('[data-book]');
+      const getBook = () => (location.hash.slice(1) || 'NCE1').replace(/[^\w\d]/g,'');
+      function activeTab(book){ segBooks.forEach(b=>b.classList.toggle('active', b.dataset.book===book)); }
+      
+      function updateStatistics() {
+        if(!window.progressManager) return;
+        const stats = window.progressManager.getStatistics();
+        const statsEl = document.getElementById('stats');
+        if(statsEl && stats.total.lessons > 0) {
+          statsEl.style.display = 'block';
+          statsEl.innerHTML = `
+            <div class="stats-grid">
+              <div class="stat-item">
+                <div class="stat-value">${stats.total.lessons}</div>
+                <div class="stat-label">已学课程</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-value">${window.progressManager.formatDuration(stats.total.duration)}</div>
+                <div class="stat-label">学习时长</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-value">${stats.streak}</div>
+                <div class="stat-label">连续天数</div>
+              </div>
+            </div>
+          `;
+        }
+      }
+      async function load(){
+        const res = await fetch('static/data.json');
+        const data = await res.json();
+        render(data);
+      }
+      function render(data){
+        const book = getBook();
+        const num = parseInt(book.replace('NCE','')) || 1;
+        header.textContent = `新概念英语第${['一','二','三','四'][num-1]}册`;
+        activeTab(book);
+        const lessons = data[num]||[];
+        container.innerHTML = '';
+        lessons.forEach((lesson,idx)=>{
+          let lessonNumber = num===1 ? `${idx*2+1}&${idx*2+2}` : String(idx+1);
+          const a = document.createElement('a');
+          a.className='lesson-item';
+          
+          // Check progress
+          if(window.progressManager) {
+            const progress = window.progressManager.getLessonProgress(book, lesson.filename);
+            if(progress) {
+              if(progress.completed) {
+                a.classList.add('completed');
+              } else if(progress.lastVisit) {
+                a.classList.add('in-progress');
+              }
+            }
+          }
+          
+          a.href = `lesson.html#${book}/${lesson.filename}`;
+          a.innerHTML = `
+            <div class="lesson-num">第${lessonNumber}课</div>
+            <div class="lesson-info">
+              <div class="lesson-title">${lesson.title}</div>
+              <div class="lesson-status"></div>
+            </div>
+          `;
+          container.appendChild(a);
+        });
+        
+        // Show statistics if available
+        updateStatistics();
+      }
+      window.addEventListener('hashchange',load);
+      NCE_APP.initSegmented(document);
+      load();
+    });
+  </script>
+
+</head>
+<body>
+  <div class="container">
+    <header class="hero">
+      <h1 id="bookTitle">新概念英语</h1>
+      <p class="subtitle">简约 · 高效 · 专注</p>
+      <div class="segmented" role="tablist" aria-label="册别">
+        <a class="seg" href="#NCE1" data-book="NCE1">第一册</a>
+        <a class="seg" href="#NCE2" data-book="NCE2">第二册</a>
+        <a class="seg" href="#NCE3" data-book="NCE3">第三册</a>
+        <a class="seg" href="#NCE4" data-book="NCE4">第四册</a>
+      </div>
+    </header>
+    <div id="stats" class="stats-container" style="display:none"></div>
+    <main class="lessons" id="lessons"></main>
+  </div>
+</body>
+</html>
