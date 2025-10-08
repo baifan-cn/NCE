@@ -160,6 +160,11 @@
     audio.addEventListener('loadedmetadata', () => {
       if(durationEl) durationEl.textContent = formatTime(audio.duration);
       if(timeline) timeline.max = 100;
+
+      // Update end time for the last item based on actual audio duration
+      if(items.length > 0 && items[items.length - 1].end === 0) {
+        items[items.length - 1].end = audio.duration;
+      }
     });
 
     // Volume button
@@ -265,17 +270,10 @@
 
     function scheduleAdvance(){
       clearAdvance();
-      if(idx >= 0 && idx < items.length){
+      if(idx >= 0 && idx < items.length && !loopMode){
         const ms = Math.max(0, (segmentEnd - audio.currentTime) * 1000);
         segmentTimer = setTimeout(()=>{
-          if(loopMode) {
-            // Loop current sentence
-            const currentIdx = idx; // Save current index
-            audio.currentTime = items[currentIdx].start;
-            audio.play().catch(()=>{});
-            // Re-schedule for next loop
-            scheduleAdvance();
-          } else if(idx+1 < items.length){
+          if(idx+1 < items.length && !loopMode){
             playSegment(idx+1);
           } else {
             // last sentence of lesson: stop here
@@ -285,31 +283,55 @@
       }
     }
 
-    function playSegment(i){
+// 检查seekable范围的辅助函数
+function canSeekTo(time) {
+  if(!audio.seekable || audio.seekable.length === 0) return false;
+  for(let j = 0; j < audio.seekable.length; j++) {
+    if(time >= audio.seekable.start(j) && time <= audio.seekable.end(j)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function playSegment(i){
       if(i<0 || i>=items.length) return;
       idx = i;
       const it = items[i];
-      audio.currentTime = Math.max(0, it.start);
-      segmentEnd = computeEnd(it);
-      const p = audio.play();
-      if(p && p.catch){ p.catch(()=>{}); }
-      highlight(i);
-      scheduleAdvance();
-      
-      // Track sentence played
-      if(!sentencesPlayed.has(i)) {
-        sentencesPlayed.add(i);
-        if(window.progressManager) {
-          window.progressManager.markSentenceLearned(book, base, i, segmentEnd - it.start);
+
+      // 尝试跳转到指定时间
+      if(canSeekTo(it.start)) {
+        audio.currentTime = Math.max(0, it.start);
+        segmentEnd = computeEnd(it);
+        const p = audio.play();
+        if(p && p.catch){ p.catch(()=>{}); }
+      } else {
+        // 无法跳转：从头开始播放
+        segmentEnd = computeEnd(it);
+        if(audio.paused) {
+          const p = audio.play();
+          if(p && p.catch){ p.catch(()=>{}); }
         }
       }
     }
 
-    function highlight(i){
+    function highlight(i, smooth=true){
       const prev = listEl.querySelector('.sentence.active');
       if(prev) prev.classList.remove('active');
       const cur = listEl.querySelector(`.sentence[data-idx="${i}"]`);
-      if(cur){ cur.classList.add('active'); cur.scrollIntoView({behavior:'smooth', block:'center'}); }
+      if(cur){
+        cur.classList.add('active');
+        if(smooth) {
+          cur.scrollIntoView({behavior:'smooth', block:'center'});
+        } else {
+          // 首次加载时不滚动
+          const containerRect = listEl.getBoundingClientRect();
+          const elementRect = cur.getBoundingClientRect();
+          if(elementRect.bottom > containerRect.bottom || elementRect.top < containerRect.top) {
+            cur.scrollIntoView({behavior:'auto', block:'center'});
+          }
+        }
+      }
     }
 
     listEl.addEventListener('click', e=>{
@@ -341,23 +363,24 @@
         if(currentTimeEl) currentTimeEl.textContent = formatTime(t);
       }
 
-      // Only maintain highlight and reschedule if user scrubbed into another sentence
       // Update current index/highlight
-      for(let i=0;i<items.length;i++){
-        const it = items[i];
-        const segEnd = computeEnd(it);
-        const within = t >= it.start && t < segEnd;
-        if(within){
-          if(idx!==i){
-            idx=i;
-            segmentEnd = segEnd;
-            highlight(i);
-            // Only reschedule if playing
-            if(!audio.paused) {
-              scheduleAdvance();
+      if(!loopMode) {  // 只在非循环模式下更新索引
+        for(let i=0;i<items.length;i++){
+          const it = items[i];
+          const segEnd = computeEnd(it);
+          const within = t >= it.start && t < segEnd;
+          if(within){
+            if(idx!==i){
+              idx=i;
+              segmentEnd = segEnd;
+              highlight(i);
+              // Only reschedule if playing and not already scheduled
+              if(!audio.paused && !segmentTimer) {
+                scheduleAdvance();
+              }
             }
+            break;
           }
-          break;
         }
       }
     });
@@ -367,7 +390,10 @@
       clearAdvance();
     });
     audio.addEventListener('play', () => {
-      scheduleAdvance();
+      // Only schedule if not already scheduled and we have a valid index
+      if(!segmentTimer && idx >= 0 && idx < items.length) {
+        scheduleAdvance();
+      }
     });
     
     // Handle when audio reaches the end naturally
@@ -428,16 +454,51 @@
       });
     }
     
-    // Initialize loop control
+    // 循环模式处理函数
+function loopHandler() {
+  if(loopMode && idx >= 0 && idx < items.length) {
+    const currentSentence = items[idx];
+    const loopStart = currentSentence.start;
+    const loopEnd = computeEnd(currentSentence);
+
+    // 检查是否可以跳转
+    if(canSeekTo(loopStart)) {
+      audio.currentTime = loopStart;
+    }
+
+    audio.play().catch(()=>{});
+    const loopMs = Math.max(0, (loopEnd - loopStart) * 1000);
+    segmentTimer = setTimeout(loopHandler, loopMs);
+  }
+}
+
+// Initialize loop control
     if(loopBtn) {
       loopBtn.addEventListener('click', () => {
         loopMode = !loopMode;
         loopBtn.classList.toggle('active', loopMode);
         loopBtn.title = loopMode ? '单句循环 (开启)' : '单句循环 (关闭)';
-        
+
         // Show notification
         const msg = loopMode ? '单句循环已开启' : '单句循环已关闭';
         showNotification(msg);
+
+        // Handle loop mode logic
+        if(loopMode && idx >= 0 && idx < items.length) {
+          // If currently playing and loop mode enabled, set up loop
+          if(!audio.paused) {
+            clearAdvance();
+            const currentSentence = items[idx];
+            const loopEnd = computeEnd(currentSentence);
+            const ms = Math.max(0, (loopEnd - audio.currentTime) * 1000);
+            segmentTimer = setTimeout(loopHandler, ms);
+          }
+        } else {
+          // If exiting loop mode, resume normal advance
+          if(!audio.paused && idx >= 0 && idx < items.length) {
+            scheduleAdvance();
+          }
+        }
       });
     }
     
@@ -637,7 +698,14 @@
 
       // Auto-play first sentence
       if(items.length > 0) {
-        playSegment(0);
+        // Wait for audio to be ready before playing
+        if(audio.readyState >= 1) {
+          playSegment(0);
+        } else {
+          audio.addEventListener('canplay', () => playSegment(0), { once: true });
+        }
+        // 首次加载时高亮第一句但不滚动
+        highlight(0, false);
       }
     }).catch(err=>{
       titleEl.textContent = '无法加载课文';

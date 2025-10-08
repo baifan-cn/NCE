@@ -2,6 +2,12 @@
 
 > 一个现代化的新概念英语在线学习平台，支持音频播放、中英文字幕同步、学习进度跟踪等功能。
 
+## 📷 界面预览
+
+![首页界面](https://edit-upload-pic.cdn.bcebos.com/a22af0ee29eddc7781115d80419ab667.jpeg?authorization=bce-auth-v1%2FALTAKh1mxHnNIyeO93hiasKJqq%2F2025-10-08T02%3A55%3A21Z%2F3600%2Fhost%2F3df4ef3f78f9191aba92c9904800ba1fd5d047ecf363e69fe2d2d9936a0f7c92)
+
+![课程学习界面](https://edit-upload-pic.cdn.bcebos.com/e947361b80d9536486ed7417f7e39381.jpeg?authorization=bce-auth-v1%2FALTAKh1mxHnNIyeO93hiasKJqq%2F2025-10-08T02%3A55%3A52Z%2F3600%2Fhost%2F8e9eaaed40ab1f2dcd9ad3d8cfcd8f5941fb9b7e2d11b9cc9d20e30c8b9cc433)
+
 ## 📚 项目简介
 
 NCE 是一个基于 Web 的新概念英语学习平台，包含完整的四册教材（NCE1-NCE4），提供沉浸式英语学习体验。平台支持音频播放、实时字幕同步、多种语言模式切换和学习进度管理。
