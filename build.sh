@@ -44,8 +44,10 @@ fi
 echo "✅ Build completed successfully!"
 echo "Output directory: www/"
 
-# Sync with Capacitor
-echo "Syncing with Capacitor..."
-npx cap sync
+# Sync with Capacitor (optional)
+if [ "${CAP_SYNC:-0}" = "1" ]; then
+  echo "Syncing with Capacitor..."
+  npx cap sync
+fi
 
 echo "🎉 Ready for deployment!"

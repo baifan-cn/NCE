@@ -91,24 +91,7 @@ jobs:
       - name: Optimize assets
         run: |
           echo "Optimizing assets..."
-          # 压缩 HTML
-          for file in www/*.html; do
-            if [ -f "$file" ]; then
-              echo "Optimizing $file..."
-              # 简单的 HTML 压缩（移除多余空格和注释）
-              sed -i '/^\s*<!--/,/^\s*-->/d' "$file"
-              sed -i 's/^\s*//' "$file"
-              sed -i '$^' "$file"
-            fi
-          done
-
-          # 压缩 CSS
-          if [ -f "www/assets/styles.css" ]; then
-            echo "Optimizing CSS..."
-            sed -i '/^\s*\/\*/,/\*\//d' "www/assets/styles.css"
-            sed -i '/^\s*$/d' "www/assets/styles.css"
-            sed -i 's/^\s*//' "www/assets/styles.css"
-          fi
+          npm run optimize || echo "Optimization skipped"
 
       - name: Generate build info
         run: |
@@ -144,6 +127,9 @@ jobs:
       contents: read
       pages: write
       id-token: write
+
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - name: Download web artifacts
@@ -218,7 +204,7 @@ jobs:
           ./gradlew assembleRelease --no-daemon
 
       - name: Sign APK (if secrets available)
-        if: secrets.ANDROID_KEYSTORE_BASE64 && secrets.ANDROID_KEY_ALIAS && secrets.ANDROID_KEY_PASSWORD
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
           cd android
@@ -353,7 +339,7 @@ jobs:
       - name: Build Electron app
         run: |
           cd electron
-          npm run build
+          npm run electron:make
 
       - name: Upload Electron artifacts
         uses: actions/upload-artifact@v4
@@ -380,7 +366,7 @@ jobs:
           echo "## 📦 NCE Flow Release Assets" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 🌐 Web Application" >> $GITHUB_STEP_SUMMARY
-          echo "- **GitHub Pages**: [View Live Demo](${{ steps.deployment.outputs.page_url }})" >> $GITHUB_STEP_SUMMARY
+          echo "- **GitHub Pages**: https://nce.ichochy.com" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### 📱 Mobile Applications" >> $GITHUB_STEP_SUMMARY
           echo "- **Android APK**: Available in release assets" >> $GITHUB_STEP_SUMMARY
@@ -403,7 +389,7 @@ jobs:
         if: needs.deploy-web.result == 'success'
         run: |
           echo "✅ Web deployment completed successfully!"
-          echo "🌐 Live at: ${{ steps.deployment.outputs.page_url }}"
+          echo "🌐 Live at: ${{ needs.deploy-web.outputs.page_url }}"
 
       - name: Notify failure
         if: failure()
