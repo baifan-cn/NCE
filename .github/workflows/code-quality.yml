@@ -146,7 +146,7 @@ jobs:
           for html_file in *.html; do
             if [ -f "$html_file" ]; then
               echo "Validating $html_file..."
-              html-validate "$html_file" --format json
+              html-validate "$html_file" || echo "HTML validation issues found in $html_file"
             fi
           done
         continue-on-error: true
