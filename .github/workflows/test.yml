@@ -1,0 +1,19 @@
+name: Test Workflow
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Hello World
+        run: echo "Hello World - workflow is working!"
+
+      - name: Test secrets (simple)
+        if: secrets.GITHUB_TOKEN
+        run: echo "GitHub token is available"
