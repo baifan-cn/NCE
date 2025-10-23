@@ -1,0 +1,10 @@
+{
+  "appId": "com.nceflow.app",
+  "appName": "NCE Flow",
+  "webDir": "www",
+  "server": {
+    "hostname": "localhost",
+    "iosScheme": "capacitor",
+    "androidScheme": "https"
+  }
+}

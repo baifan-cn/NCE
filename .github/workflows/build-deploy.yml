@@ -1,0 +1,412 @@
+name: Build and Deploy NCE Flow
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+  release:
+    types: [ published ]
+
+env:
+  NODE_VERSION: '18'
+  CAPACITOR_VERSION: '5.4.4'
+
+jobs:
+  # 代码质量检查
+  quality-check:
+    name: Code Quality Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linting
+        run: |
+          if [ -f ".eslintrc.js" ] || [ -f ".eslintrc.json" ]; then
+            npm run lint
+          else
+            echo "No ESLint config found, skipping linting"
+          fi
+
+      - name: Check file sizes
+        run: |
+          echo "Checking file sizes..."
+          find . -name "*.js" -not -path "./node_modules/*" -not -path "./www/*" -exec wc -c {} + | sort -n
+          find . -name "*.css" -not -path "./node_modules/*" -not -path "./www/*" -exec wc -c {} + | sort -n
+
+      - name: Validate HTML
+        run: |
+          echo "Validating HTML files..."
+          for file in *.html; do
+            if [ -f "$file" ]; then
+              echo "Validating $file..."
+              # 简单的 HTML 验证
+              if ! grep -q "<!DOCTYPE html>" "$file"; then
+                echo "❌ $file missing DOCTYPE"
+                exit 1
+              fi
+              if ! grep -q "<title>" "$file"; then
+                echo "❌ $file missing title tag"
+                exit 1
+              fi
+              echo "✅ $file validation passed"
+            fi
+          done
+
+  # Web 构建和部署
+  web-build:
+    name: Build Web App
+    runs-on: ubuntu-latest
+    needs: quality-check
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.event_name == 'release'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web app
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Optimize assets
+        run: |
+          echo "Optimizing assets..."
+          # 压缩 HTML
+          for file in www/*.html; do
+            if [ -f "$file" ]; then
+              echo "Optimizing $file..."
+              # 简单的 HTML 压缩（移除多余空格和注释）
+              sed -i '/^\s*<!--/,/^\s*-->/d' "$file"
+              sed -i 's/^\s*//' "$file"
+              sed -i '$^' "$file"
+            fi
+          done
+
+          # 压缩 CSS
+          if [ -f "www/assets/styles.css" ]; then
+            echo "Optimizing CSS..."
+            sed -i '/^\s*\/\*/,/\*\//d' "www/assets/styles.css"
+            sed -i '/^\s*$/d' "www/assets/styles.css"
+            sed -i 's/^\s*//' "www/assets/styles.css"
+          fi
+
+      - name: Generate build info
+        run: |
+          echo "Generating build info..."
+          cat > www/build-info.json << EOF
+          {
+            "buildTime": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "commit": "${{ github.sha }}",
+            "branch": "${{ github.ref_name }}",
+            "version": "${{ github.event_name == 'release' && github.event.release.tag_name || 'latest' }}",
+            "actor": "${{ github.actor }}"
+          }
+          EOF
+
+      - name: Upload web artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: www/
+          retention-days: 30
+
+  # 部署到 GitHub Pages
+  deploy-web:
+    name: Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: web-build
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    steps:
+      - name: Download web artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: www
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload to GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: www
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # Android 构建
+  android-build:
+    name: Build Android App
+    runs-on: ubuntu-latest
+    needs: quality-check
+    if: github.event_name == 'release'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build web app
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Sync with Capacitor
+        run: npx cap sync android
+
+      - name: Build Android APK
+        run: |
+          cd android
+          if [ ! -f "gradlew" ]; then
+            echo "Gradle wrapper not found, initializing..."
+            # 确保 gradle wrapper 存在
+            wget https://services.gradle.org/distributions/gradle-8.0-bin.zip
+            unzip gradle-8.0-bin.zip
+            export GRADLE_HOME=$PWD/gradle-8.0
+            export PATH=$PATH:$GRADLE_HOME/bin
+            gradle wrapper
+          fi
+
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+
+      - name: Sign APK (if secrets available)
+        if: secrets.ANDROID_KEYSTORE_BASE64 && secrets.ANDROID_KEY_ALIAS && secrets.ANDROID_KEY_PASSWORD
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
+          cd android
+          ./gradlew assembleRelease -Pandroid.injected.signing.store.file=app/release.keystore \
+            -Pandroid.injected.signing.store.password="${{ secrets.ANDROID_KEY_PASSWORD }}" \
+            -Pandroid.injected.signing.key.alias="${{ secrets.ANDROID_KEY_ALIAS }}" \
+            -Pandroid.injected.signing.key.password="${{ secrets.ANDROID_KEY_PASSWORD }}"
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: |
+            android/app/build/outputs/apk/release/*.apk
+          retention-days: 90
+
+      - name: Upload Android APK to release
+        if: github.event_name == 'release'
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: android/app/build/outputs/apk/release/app-release.apk
+          asset_name: nce-flow-android.apk
+          asset_content_type: application/vnd.android.package-archive
+
+  # iOS 构建 (需要 macOS)
+  ios-build:
+    name: Build iOS App
+    runs-on: macos-latest
+    needs: quality-check
+    if: github.event_name == 'release'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install CocoaPods
+        run: |
+          cd ios
+          pod install
+
+      - name: Build web app
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Sync with Capacitor
+        run: npx cap sync ios
+
+      - name: Build iOS App
+        run: |
+          cd ios
+          xcodebuild -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath build/App.xcarchive \
+            archive
+
+      - name: Export IPA
+        if: secrets.APPLE_ID && secrets.APPLE_ID_PASSWORD && secrets.APPLE_TEAM_ID
+        run: |
+          cd ios
+          xcodebuild -exportArchive \
+            -archivePath build/App.xcarchive \
+            -exportPath build \
+            -exportOptionsPlist ExportOptions.plist
+
+      - name: Upload iOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-ipa
+          path: |
+            ios/build/*.ipa
+            ios/build/App.xcarchive
+          retention-days: 90
+
+  # Electron 构建
+  electron-build:
+    name: Build Electron App
+    runs-on: ${{ matrix.os }}
+    needs: quality-check
+    if: github.event_name == 'release'
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web app
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Setup Electron
+        run: |
+          if [ ! -d "electron" ]; then
+            echo "Electron directory not found, initializing..."
+            npx @capacitor-community/cli electron:init
+          fi
+
+      - name: Sync with Capacitor
+        run: npx cap sync @capacitor-community/electron
+
+      - name: Install Electron dependencies
+        run: |
+          cd electron
+          npm install
+
+      - name: Build Electron app
+        run: |
+          cd electron
+          npm run build
+
+      - name: Upload Electron artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-${{ matrix.os }}
+          path: electron/dist/
+          retention-days: 90
+
+  # 创建发布
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: [web-build, android-build, ios-build, electron-build]
+    if: github.event_name == 'release'
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create release summary
+        run: |
+          echo "## 📦 NCE Flow Release Assets" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 🌐 Web Application" >> $GITHUB_STEP_SUMMARY
+          echo "- **GitHub Pages**: [View Live Demo](${{ steps.deployment.outputs.page_url }})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 📱 Mobile Applications" >> $GITHUB_STEP_SUMMARY
+          echo "- **Android APK**: Available in release assets" >> $GITHUB_STEP_SUMMARY
+          echo "- **iOS IPA**: Available in artifacts (manual distribution)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### 💻 Desktop Applications" >> $GITHUB_STEP_SUMMARY
+          echo "- **Windows**: Available in artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "- **macOS**: Available in artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "- **Linux**: Available in artifacts" >> $GITHUB_STEP_SUMMARY
+
+  # 通知
+  notify:
+    name: Notify Build Status
+    runs-on: ubuntu-latest
+    needs: [deploy-web, android-build, ios-build, electron-build]
+    if: always()
+
+    steps:
+      - name: Notify success
+        if: needs.deploy-web.result == 'success'
+        run: |
+          echo "✅ Web deployment completed successfully!"
+          echo "🌐 Live at: ${{ steps.deployment.outputs.page_url }}"
+
+      - name: Notify failure
+        if: failure()
+        run: |
+          echo "❌ Build or deployment failed!"
+          echo "Please check the logs for more details."

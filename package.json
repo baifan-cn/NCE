@@ -1,0 +1,69 @@
+{
+  "name": "nce",
+  "version": "1.0.0",
+  "description": "> 一个现代化的新概念英语在线学习平台，支持音频播放、中英文字幕同步、学习进度跟踪等功能。",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "./build.sh",
+    "build:web": "./build.sh",
+    "build:prod": "./build.sh && npm run optimize",
+    "optimize": "npm run minify-js && npm run minify-css",
+    "minify-js": "find www -name '*.js' -not -path '*/node_modules/*' -exec terser {} --compress --mangle --output {} \\;",
+    "minify-css": "find www -name '*.css' -not -path '*/node_modules/*' -exec cleancss -o {} {} \\;",
+    "dev": "npx serve . -l 8000 --cors",
+    "preview": "npm run build && npx serve www -l 8000",
+    "sync": "npx cap sync",
+    "sync:android": "npx cap sync android",
+    "sync:ios": "npx cap sync ios",
+    "sync:electron": "npx cap sync @capacitor-community/electron",
+    "serve": "npx cap serve",
+    "run:android": "npx cap run android",
+    "run:ios": "npx cap run ios",
+    "run:electron": "npx cap run @capacitor-community/electron",
+    "build:android": "npm run build && npm run sync:android && cd android && ./gradlew assembleDebug",
+    "build:android:release": "npm run build && npm run sync:android && cd android && ./gradlew assembleRelease",
+    "build:ios": "npm run build && npm run sync:ios && npx cap open ios",
+    "build:electron": "npm run build && npm run sync:electron && cd electron && npm run build",
+    "build:all": "./build.sh && npm run build:android && npm run build:electron",
+    "lint": "eslint . --ext .js,.mjs --fix",
+    "lint:check": "eslint . --ext .js,.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "validate": "npm run lint:check && npm run format:check",
+    "security:audit": "npm audit",
+    "security:check": "npm audit --audit-level=moderate",
+    "start": "npm run dev",
+    "clean": "rm -rf www dist android/app/build ios/build electron/dist",
+    "clean:all": "npm run clean && rm -rf node_modules package-lock.json && npm install"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/baifan-cn/NCE.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/baifan-cn/NCE/issues"
+  },
+  "homepage": "https://github.com/baifan-cn/NCE#readme",
+  "devDependencies": {
+    "@capacitor-community/electron": "^5.0.1",
+    "@capacitor/cli": "^7.4.4",
+    "@capacitor/core": "^7.4.4",
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5",
+    "terser": "^5.27.0",
+    "clean-css-cli": "^5.6.3",
+    "html-validate": "^8.14.0",
+    "serve": "^14.2.1",
+    "pa11y-ci": "^3.1.0",
+    "license-checker": "^25.0.1"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.4.4",
+    "@capacitor/ios": "^7.4.4"
+  }
+}

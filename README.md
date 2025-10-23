@@ -152,9 +152,65 @@ NCE-Flow/
 }
 ```
 
+## 🚀 部署
+
+### 自动化部署
+
+项目使用 GitHub Actions 实现自动化构建和部署：
+
+- **Web 应用**: 自动部署到 GitHub Pages
+- **Android 应用**: 构建并上传到 Releases
+- **iOS 应用**: 构建（需要 macOS）
+- **Electron 应用**: 构建 Windows、macOS、Linux 版本
+
+### 快速部署
+
+```bash
+# 安装依赖
+npm install
+
+# 构建所有平台
+npm run build:all
+
+# 本地预览
+npm run preview
+```
+
+详细部署指南请查看 [DEPLOYMENT.md](./DEPLOYMENT.md)
+
+## 🔄 CI/CD
+
+### 工作流
+
+- **主构建**: 代码检查、构建、部署
+- **安全扫描**: 漏洞扫描、代码安全分析
+- **代码质量**: ESLint、Prettier、性能测试
+- **依赖缓存**: 优化构建速度
+
+### 状态徽章
+
+![Build Status](https://github.com/baifan-cn/NCE/workflows/Build%20and%20Deploy/badge.svg)
+![Security Scan](https://github.com/baifan-cn/NCE/workflows/Security%20Scan/badge.svg)
+![Code Quality](https://github.com/baifan-cn/NCE/workflows/Code%20Quality%20Check/badge.svg)
+
 ## 🤝 贡献
 
 欢迎提交 Issue 和 Pull Request 来改进这个项目！
+
+### 开发规范
+
+1. Fork 项目
+2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 创建 Pull Request
+
+### 代码规范
+
+- 使用 ESLint 进行代码检查
+- 使用 Prettier 进行代码格式化
+- 确保所有测试通过
+- 遵循提交信息规范
 
 ## 📄 许可证
 

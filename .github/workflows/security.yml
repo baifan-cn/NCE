@@ -1,0 +1,106 @@
+name: Security Scan
+
+on:
+  schedule:
+    # 每周一凌晨 2 点运行
+    - cron: '0 2 * * 1'
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  security-scan:
+    name: Security Vulnerability Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run npm audit
+        run: |
+          echo "Running npm audit for security vulnerabilities..."
+          npm audit --audit-level=moderate
+
+      - name: Run Snyk Security Scan
+        if: secrets.SNYK_TOKEN
+        uses: snyk/actions/node@master
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+
+      - name: Check for sensitive data
+        run: |
+          echo "Checking for potential sensitive data..."
+
+          # 检查可能的 API 密钥
+          if grep -r "api[_-]?key\|secret\|token" --include="*.js" --include="*.json" --include="*.html" . | grep -v node_modules | grep -v ".git"; then
+            echo "⚠️ Potential API keys or secrets found!"
+            exit 1
+          fi
+
+          # 检查硬编码的密码
+          if grep -r "password\|passwd" --include="*.js" --include="*.json" . | grep -v node_modules | grep -v ".git" | grep -v "password.*prompt\|password.*placeholder"; then
+            echo "⚠️ Potential hardcoded passwords found!"
+            exit 1
+          fi
+
+          # 检查可能的私有 IP 地址
+          if grep -r "192\.168\|10\.\|127\." --include="*.js" --include="*.json" --include="*.html" . | grep -v node_modules | grep -v ".git"; then
+            echo "⚠️ Potential private IP addresses found!"
+          fi
+
+          echo "✅ Security scan completed"
+
+      - name: Analyze dependencies for security issues
+        run: |
+          echo "Analyzing dependency security..."
+
+          # 检查过时的依赖
+          npm outdated || true
+
+          # 检查许可证
+          npx license-checker --summary --excludePrivatePackages || true
+
+          echo "✅ Dependency analysis completed"
+
+  codeql-analysis:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'javascript' ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{matrix.language}}"
