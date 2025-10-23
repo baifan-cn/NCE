@@ -204,7 +204,7 @@ jobs:
           ./gradlew assembleRelease --no-daemon
 
       - name: Sign APK (if secrets available)
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 && secrets.ANDROID_KEY_ALIAS && secrets.ANDROID_KEY_PASSWORD }}
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
           cd android
@@ -276,7 +276,7 @@ jobs:
             archive
 
       - name: Export IPA
-        if: secrets.APPLE_ID && secrets.APPLE_ID_PASSWORD && secrets.APPLE_TEAM_ID
+        if: ${{ secrets.APPLE_ID && secrets.APPLE_ID_PASSWORD && secrets.APPLE_TEAM_ID }}
         run: |
           cd ios
           xcodebuild -exportArchive \
